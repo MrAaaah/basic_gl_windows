@@ -1,7 +1,26 @@
 #include "Window.h"
-#include <gl/GL.h>
-#include <gl/glext.h>
-#include <gl/wglext.h>
+
+PFNGLSHADERSOURCEPROC glShaderSource = NULL;
+PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
+PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
+PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = NULL;
+PFNGLDELETESHADERPROC glDeleteShader = NULL;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
+PFNGLCOMPILESHADERPROC glCompileShader = NULL;
+PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
+PFNGLCREATESHADERPROC glCreateShader = NULL;
+PFNGLATTACHSHADERPROC glAttachShader = NULL;
+PFNGLGETSHADERIVPROC glGetShaderiv = NULL;
+PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
+PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
+PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC glBufferData = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+PFNGLUNIFORM1FPROC glUniform1f = NULL;
 
 void show_message(LPCSTR message)
 {
@@ -25,6 +44,13 @@ ATOM register_class(HINSTANCE h_instance, WNDPROC window_procedure)
 
 #define LOAD_PFN(Type, pfn) do {\
 pfn = (Type)wglGetProcAddress(#pfn);\
+if(pfn == 0 ||\
+    (pfn == (void*)0x1) || (pfn == (void*)0x2) || (pfn == (void*)0x3) ||\
+    (pfn == (void*)-1) )\
+  {\
+    HMODULE module = LoadLibraryA("opengl32.dll");\
+    pfn = (void *)GetProcAddress(module, #pfn);\
+  }\
 if (pfn == NULL)\
 {\
 	show_message(#pfn "() failed.");\
@@ -133,7 +159,6 @@ int create_window(WindowData * window_data,
 	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
 	LOAD_PFN(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB);
 
-
 	int pixel_format_id; 
 	UINT num_formats;
 	int status = wglChoosePixelFormatARB(dc, pixel_attribs, NULL, 1, &pixel_format_id, &num_formats);
@@ -149,7 +174,7 @@ int create_window(WindowData * window_data,
 	SetPixelFormat(dc, pixel_format_id, &pfd);
 
 	const int major_min = 4;
-	const int minor_min = 5;
+	const int minor_min = 6;
 	int context_attribs[] = {
 		WGL_CONTEXT_MAJOR_VERSION_ARB, major_min,
 		WGL_CONTEXT_MINOR_VERSION_ARB, minor_min,
@@ -180,6 +205,29 @@ int create_window(WindowData * window_data,
 	window_data->dc = dc;
 	window_data->rc = rc;
 	window_data->rc2 = rc2;
+
+	wglMakeCurrent(dc, rc2);
+	LOAD_PFN(PFNGLSHADERSOURCEPROC, glShaderSource);
+	LOAD_PFN(PFNGLCREATEPROGRAMPROC, glCreateProgram);
+	LOAD_PFN(PFNGLGETPROGRAMIVPROC, glGetProgramiv);
+	LOAD_PFN(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog);
+	LOAD_PFN(PFNGLDELETESHADERPROC, glDeleteShader);
+	LOAD_PFN(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog);
+	LOAD_PFN(PFNGLCOMPILESHADERPROC, glCompileShader);
+	LOAD_PFN(PFNGLLINKPROGRAMPROC, glLinkProgram);
+	LOAD_PFN(PFNGLCREATESHADERPROC, glCreateShader);
+	LOAD_PFN(PFNGLATTACHSHADERPROC, glAttachShader);
+	LOAD_PFN(PFNGLGETSHADERIVPROC, glGetShaderiv);
+	LOAD_PFN(PFNGLGENBUFFERSPROC, glGenBuffers);
+	LOAD_PFN(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays);
+	LOAD_PFN(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray);
+	LOAD_PFN(PFNGLBINDBUFFERPROC, glBindBuffer);
+	LOAD_PFN(PFNGLBUFFERDATAPROC, glBufferData);
+	LOAD_PFN(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer);
+	LOAD_PFN(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray);
+	LOAD_PFN(PFNGLUSEPROGRAMPROC, glUseProgram);
+	LOAD_PFN(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation);
+	LOAD_PFN(PFNGLUNIFORM1FPROC, glUniform1f);
 
 	return 0;
 }

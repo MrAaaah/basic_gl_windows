@@ -7,6 +7,8 @@
 
 #include "Window.h"
 
+float time = 0.2;
+
 LRESULT CALLBACK window_procedure(HWND hwnd, UINT message, WPARAM w_param, LPARAM l_param)
 {
 	switch (message)
@@ -16,7 +18,15 @@ LRESULT CALLBACK window_procedure(HWND hwnd, UINT message, WPARAM w_param, LPARA
 		return TRUE;
 	}
 	case WM_KEYDOWN:
-		if (w_param == VK_ESCAPE)
+		if (w_param == VK_LEFT)
+		{
+			time -= 0.01;
+		}
+		else if (w_param == VK_RIGHT)
+		{
+			time += 0.01;
+		}
+		else if (w_param == VK_ESCAPE)
 		{
 			PostQuitMessage(0);
 		}
@@ -49,15 +59,162 @@ typedef struct RenderingThreadData
 	BOOL run;
 } RenderingThreadData;
 
+uint32_t program;
+uint32_t vao;
+uint32_t fullscreen_program;
+uint32_t fullscreen_vao;
+uint32_t time_uniform;
+
+size_t read_file(const char * path, char ** buffer)
+{
+	FILE * fh;
+	fopen_s(&fh, path, "rb");
+	fseek(fh, 0, SEEK_END);
+	long length = ftell(fh);
+	fseek(fh, 0, SEEK_SET);
+	char * local_buffer = malloc(length + 1);
+	if (local_buffer)
+	{
+		fread(local_buffer, 1, length, fh);
+	}
+	local_buffer[length] = '\0';
+
+	fclose(fh);
+
+	*buffer = local_buffer;
+	return length;
+}
+
+uint32_t compile_shader(GLuint shader_type, char * content)
+{
+	int success;
+	char info_log[512];
+
+	// vertex Shader
+	uint32_t shader = glCreateShader(shader_type);
+	glShaderSource(shader, 1, content, NULL);
+	glCompileShader(shader);
+	// print compile errors if any
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(shader, 512, NULL, info_log);
+		show_message(info_log);
+	};
+
+	return shader;
+}
+
+typedef struct ShaderStage
+{
+	GLuint type;
+	const char * filepath;
+} ShaderStage;
+
+uint32_t new_program(ShaderStage * shader_stages, size_t stages_count)
+{
+	GLuint * shaders = malloc(sizeof(GLuint) * stages_count);
+	for (size_t i = 0; i < stages_count; i++)
+	{
+		char * content;
+		read_file(shader_stages[i].filepath, &content);
+
+		shaders[i] = compile_shader(shader_stages[i].type, &content);
+		free(content);
+	}
+
+	GLuint program = glCreateProgram();
+	for (size_t i = 0; i < stages_count; i++)
+	{
+		glAttachShader(program, shaders[i]);
+	}
+
+	glLinkProgram(program);
+	// print linking errors if any
+
+	int success;
+	char info_log[512];
+	glGetProgramiv(program, GL_LINK_STATUS, &success);
+	if (!success)
+	{
+		glGetProgramInfoLog(program, 512, NULL, info_log);
+		show_message(info_log);
+	}
+
+	// delete the shaders as they're linked into our program now and no longer necessery
+	for (size_t i = 0; i < stages_count; i++)
+	{
+		glDeleteShader(shaders[i]);
+	}
+	free(shaders);
+
+	return program;
+}
+
+void renderer_init()
+{
+	ShaderStage shaders[2] = {
+		{ GL_VERTEX_SHADER, "shader.vs" },
+		{ GL_FRAGMENT_SHADER, "shader.fs" },
+	};
+	program = new_program(shaders, 2);
+
+	ShaderStage fullscreen_shaders[2] = {
+		{ GL_VERTEX_SHADER, "fullscreen.vs" },
+		{ GL_FRAGMENT_SHADER, "fullscreen.fs" },
+	};
+	fullscreen_program = new_program(fullscreen_shaders, 2);
+	glGetUniformLocation(fullscreen_program, "time");
+
+	uint32_t vbo[2], ebo;
+	float vertices[] = {
+	 0.5f, -0.5f, 0.0f,  // bottom right
+	 0.0f,  0.5f, 0.0f,  // top 
+	-0.5f, -0.5f, 0.0f,  // bottom left
+	};
+
+	float colors[] = {
+	 1.0f, 0.5f, 0.0f,  // bottom right
+	 0.0f,  1.0f, 0.0f,  // top 
+	0.5f, 0.5f, 1.0f,  // bottom left
+	};
+
+	unsigned int indices[] = {  // note that we start from 0!
+		0, 1, 2,   // first triangle
+	};
+
+	glGenBuffers(2, &vbo[0]);
+	glGenBuffers(1, &ebo);
+	glGenVertexArrays(1, &vao);
+
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo[1]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glBindVertexArray(0);
+
+	glGenVertexArrays(1, &fullscreen_vao);
+}
+
 DWORD WINAPI RenderThread(void* params) {
-  // Do stuff.  This will be the first function called on the new thread.
-  // When this function returns, the thread goes away.  See MSDN for more details.
+	// Do stuff.  This will be the first function called on the new thread.
+	// When this function returns, the thread goes away.  See MSDN for more details.
 	RenderingThreadData * data = params;
 	if (!wglMakeCurrent(data->window->dc, data->window->rc))
 	{
 		show_message("wglMakeCurrent() failed");
 		return 1;
 	}
+
+	renderer_init();
+
 	BOOL active = TRUE;
 	while (active)
 	{
@@ -69,16 +226,25 @@ DWORD WINAPI RenderThread(void* params) {
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
+		glUseProgram(fullscreen_program);
+		glUniform1f(time_uniform, time);
+		glBindVertexArray(fullscreen_vao);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+
+		glUseProgram(program);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
+
 		SwapBuffers(data->window->dc);
 
 		DWORD waitResult = WaitForSingleObject(data->quit_mutex, INFINITE);
 		active = data->run;
 		ReleaseMutex(data->quit_mutex);
 	}
-  return 0;
+	return 0;
 }
 
-int APIENTRY wWinMain(HINSTANCE h_instance, HINSTANCE h_prev_instance, LPWSTR lp_cmd_line, int n_cmd_show) 
+int APIENTRY wWinMain(HINSTANCE h_instance, HINSTANCE h_prev_instance, LPWSTR lp_cmd_line, int n_cmd_show)
 {
 	// compute the window size / position
 	EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, 0);
@@ -124,11 +290,11 @@ int APIENTRY wWinMain(HINSTANCE h_instance, HINSTANCE h_prev_instance, LPWSTR lp
 
 	MSG msg;
 	int active = 1;
-	while (active) 
+	while (active)
 	{
-		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) 
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
-			if (msg.message == WM_QUIT) 
+			if (msg.message == WM_QUIT)
 			{
 				active = 0;
 			}
